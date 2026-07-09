@@ -1,6 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
-title Chromecast ADB Control Panel
+title ADB INTERACTIVE CONSOLE - v1.2
 
 :: Force the script to look inside its own folder for adb.exe
 cd /d "%~dp0"
@@ -17,8 +17,11 @@ if not exist "adb.exe" (
     exit /b
 )
 
-:: Define default IP globally right at startup
+:: Load cached IP if it exists, otherwise fallback to default
 set "ip=192.168.2.157"
+if exist ".last_ip.txt" (
+    set /p ip=<".last_ip.txt"
+)
 
 :: 1. Check if ADB already sees it as a live, fully connected device right now
 adb devices > "%temp%\adb_check.txt" 2>&1
@@ -39,8 +42,8 @@ del "%temp%\adb_check.txt"
 
 :: 2. If not instantly live, try waking it up using the last known good port
 set "port=35123"
-if exist "last_port.txt" (
-    set /p port=<"last_port.txt"
+if exist ".last_port.txt" (
+    set /p port=<".last_port.txt"
 )
 
 adb connect %ip%:%port% > nul 2>&1
@@ -66,7 +69,7 @@ adb disconnect >nul 2>&1
 :mode_select
 cls
 echo ====================================================
-echo                CHROMECAST ADB HELPER
+echo              ADB INTERACTIVE CONSOLE - v1.2
 echo ====================================================
 echo --- ADB Pairing Options ---
 echo.
@@ -79,8 +82,8 @@ echo   TV screen. If your PC is listed there, choose Option 1 or 2.
 echo   If your PC is missing, choose Option 3.
 echo.
 echo ----------------------------------------------------
-echo  [1] Auto Connect (Quick connect using last saved port)
-echo  [2] Standard Connect (Device is already paired - Manual Port)
+echo  [1] Auto Connect (Quick connect using last saved IP/port)
+echo  [2] Standard Connect (Device is already paired - Manual Setup)
 echo  [3] Pair New Device (First time setup / Re-pairing)
 echo.
 set /p mode="-> Select an option (1, 2, or 3): "
@@ -95,11 +98,8 @@ goto mode_select
 :manual_auto_check
 cls
 echo Initiating Auto Connect routine...
-set "ip=192.168.2.157"
-set "port=35123"
-if exist "last_port.txt" (
-    set /p port=<"last_port.txt"
-)
+if exist ".last_ip.txt" (set /p ip=<".last_ip.txt") else (set "ip=192.168.2.157")
+if exist ".last_port.txt" (set /p port=<".last_port.txt") else (set "port=35123")
 
 echo Attempting background bridge to %ip%:%port%...
 adb connect %ip%:%port% > nul 2>&1
@@ -121,10 +121,10 @@ del "%temp%\adb_manual_check.txt"
 echo.
 echo ----------------------------------------------------
 echo  [!] AUTO CONNECT FAILED.
-echo  The saved port (%port%) is invalid or expired.
+echo  The saved target (%ip%:%port%) is invalid or expired.
 echo ----------------------------------------------------
 echo.
-echo  [1] Try Manual Connection (Enter a new port)
+echo  [1] Try Manual Connection (Enter details manually)
 echo  [2] Return to Main Menu
 echo.
 :manual_fail_choice
@@ -137,7 +137,7 @@ goto manual_fail_choice
 :pairing_wizard
 cls
 echo ====================================================
-echo                CHROMECAST ADB HELPER
+echo              ADB INTERACTIVE CONSOLE - v1.2
 echo ====================================================
 echo --- ADB Pairing Wizard ---
 echo.
@@ -146,7 +146,7 @@ echo   Under Wireless Debugging, click:
 echo   -^> "Pair device with pairing code"
 echo.
 echo ----------------------------------------------------
-set "pair_ip=192.168.2.157"
+if exist ".last_ip.txt" (set /p pair_ip=<".last_ip.txt") else (set "pair_ip=192.168.2.157")
 set /p user_pair_ip="-> Confirm TV IP [%pair_ip%]: "
 if not "%user_pair_ip%"=="" set "pair_ip=%user_pair_ip%"
 
@@ -178,14 +178,22 @@ if %errorlevel% neq 0 (
 )
 
 del "%temp%\adb_pair_status.txt"
+echo %pair_ip%>".last_ip.txt"
 
 echo.
-echo Pairing successful! Seamlessly connecting to console...
-set "ip=%pair_ip%"
-set "port=%pair_port%"
+echo Pairing successful!
+echo.
+echo  ⚠️  IMPORTANT TV ACTION:
+echo   Close that popup sub-menu on your TV and look back at 
+echo   the main Wireless Debugging screen for the actual 
+echo   CONNECTION port number (they are different!).
+echo.
+:pair_connect_port
+set /p port="-> Enter the 5-digit CONNECTION port from your TV: "
+if "%port%"=="" goto pair_connect_port
 
-:: Save the port for future auto-connections
-echo %port%>"last_port.txt"
+set "ip=%pair_ip%"
+echo %port%>".last_port.txt"
 
 :: Run direct connection using the authenticated port
 adb connect %ip%:%port% > nul 2>&1
@@ -195,7 +203,7 @@ goto launch_with_help
 :setup
 cls
 echo ====================================================
-echo                CHROMECAST ADB HELPER
+echo              ADB INTERACTIVE CONSOLE - v1.2
 echo ====================================================
 echo --- Connect to Already Paired Device ---
 echo.
@@ -206,10 +214,11 @@ echo.
 echo ----------------------------------------------------
 
 :: 1. Handle the IP Address
-set "ip=192.168.2.157"
-echo Default IP: %ip%
+if exist ".last_ip.txt" (set /p ip=<".last_ip.txt") else (set "ip=192.168.2.157")
+echo Current default IP: %ip%
 set /p user_ip="-> Press ENTER to accept default, or type a new IP: "
 if not "%user_ip%"=="" set "ip=%user_ip%"
+echo %ip%>".last_ip.txt"
 
 echo.
 
@@ -273,7 +282,7 @@ goto fail_choice
 del "%temp%\adb_status.txt"
 
 :: Save this successful port to use next time the file runs
-echo %port%>"last_port.txt"
+echo %port%>".last_port.txt"
 
 echo.
 echo Connection successful! Moving to console...
@@ -283,17 +292,17 @@ goto launch_with_help
 :launch_with_help
 cls
 echo ====================================================
-echo             CHROMECAST ADB INTERACTIVE CONSOLE
+echo              ADB INTERACTIVE CONSOLE - v1.2
 echo ====================================================
-echo        (type "help" to show helper menu)
+echo         (type "help" to show helper menu)
 echo.
 goto inline_help
 
 :clear_screen
 echo ====================================================
-echo             CHROMECAST ADB INTERACTIVE CONSOLE
+echo              ADB INTERACTIVE CONSOLE - v1.2
 echo ====================================================
-echo        (type "help" to show helper menu)
+echo         (type "help" to show helper menu)
 echo.
 goto cmdloop
 
@@ -309,7 +318,10 @@ echo   ver     - Check running local ADB server version
 echo   reboot  - Remotely reboot target Android TV device
 echo   apps    - Fast array audit of sideloaded user apps
 echo   sysapps - Fast array audit of deep system core apps
-echo   install - Safely push an APK archive into the device
+echo   install - Safely target and push an APK into the TV
+echo   send    - Transfer any file from PC to TV Downloads
+echo   text    - Fast-type long text/passwords into the TV
+echo   snap    - Capture TV screenshot and save to PC Desktop
 echo   disc    - Disconnect ADB connection (Stay in Console)
 echo   recon   - Restart connection process (Change IP/Port)
 echo   opts    - Return to Pairing Options Page
@@ -334,6 +346,9 @@ if /i "%usercmd%"=="reboot" echo. & adb reboot & echo. & goto cmdloop
 if /i "%usercmd%"=="apps" echo. & adb shell pm list packages -3 & echo. & goto cmdloop
 if /i "%usercmd%"=="sysapps" echo. & adb shell pm list packages -s & echo. & goto cmdloop
 if /i "%usercmd%"=="install" goto do_install
+if /i "%usercmd%"=="send" goto do_send
+if /i "%usercmd%"=="text" goto do_text
+if /i "%usercmd%"=="snap" goto do_snap
 if /i "%usercmd%"=="recon" goto reconnect
 if /i "%usercmd%"=="opts" goto go_options
 if /i "%usercmd%"=="disc" goto just_disconnect
@@ -349,9 +364,47 @@ goto cmdloop
 echo.
 set /p "apkpath=-> Drag & drop APK file here: "
 set "apkpath=%apkpath:"=%"
-echo Installing "%apkpath%"...
+echo Installing "%apkpath%" to %ip%:%port%...
 echo.
-adb install "%apkpath%"
+adb -s %ip%:%port% install "%apkpath%"
+echo.
+goto cmdloop
+
+:do_send
+echo.
+set /p "localfile=-> Drag & drop file to copy here: "
+set "localfile=%localfile:"=%"
+echo Transferring file to %ip%:%port% (/sdcard/Download/)...
+echo.
+adb -s %ip%:%port% push "%localfile%" /sdcard/Download/
+echo.
+goto cmdloop
+
+:do_text
+echo.
+set /p "tvtext=-> Enter text to send to TV screen input: "
+echo Typing text out over the bridge...
+:: Replace spaces with %s so ADB shell passes spaces accurately without dropping quotes
+set "tvtext=%tvtext: =%s%"
+adb -s %ip%:%port% shell input text "%tvtext%"
+echo Done.
+echo.
+goto cmdloop
+
+:do_snap
+echo.
+:: Generate a clean format timestamp based on HHMMSS
+set "tstamp=%time::=%"
+set "tstamp=%tstamp: =0%"
+set "tstamp=%tstamp:~0,6%"
+set "snapname=TV_Snap_%date:~-4%%date:~4,2%%date:~7,2%_%tstamp%.png"
+
+echo Capturing TV display frame...
+adb -s %ip%:%port% shell screencap -p /sdcard/Download/snap.png
+echo Pulling frame down to PC Desktop...
+adb -s %ip%:%port% pull /sdcard/Download/snap.png "%userprofile%\Desktop\%snapname%" >nul 2>&1
+adb -s %ip%:%port% shell rm /sdcard/Download/snap.png
+echo [Success] Screenshot saved as Desktop\%snapname%
 echo.
 goto cmdloop
 
